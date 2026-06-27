@@ -5,7 +5,9 @@ import {
   AIChat, StudyPlan, Notification, UserSettings, Role 
 } from "./src/types.js";
 
-const DATA_DIR = path.join(process.cwd(), "data");
+const DATA_DIR = process.env.VERCEL 
+  ? path.join("/tmp", "data")
+  : path.join(process.cwd(), "data");
 
 // Create data directory if it doesn't exist
 if (!fs.existsSync(DATA_DIR)) {
