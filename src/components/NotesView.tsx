@@ -1,0 +1,346 @@
+import { useState, useEffect } from "react";
+import { 
+  FileText, Search, Plus, Trash2, Edit2, Download, 
+  Sparkles, CheckCircle, FileDown, BookMarked, Save 
+} from "lucide-react";
+import { Note, StudyDoc } from "../types";
+
+interface NotesViewProps {
+  documents: StudyDoc[];
+  user: any;
+  theme: "light" | "dark";
+}
+
+export default function NotesView({ documents, user, theme }: NotesViewProps) {
+  const isDark = theme === "dark";
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [search, setSearch] = useState("");
+
+  // Edit fields
+  const [editTitle, setEditTitle] = useState("");
+  const [editContent, setEditContent] = useState("");
+  const [editSubject, setEditSubject] = useState("");
+
+  useEffect(() => {
+    async function loadNotes() {
+      try {
+        const response = await fetch("/api/notes", {
+          headers: { "x-user-id": user?.id || "user-123" }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setNotes(data.notes);
+          if (data.notes.length > 0 && !activeNoteId) {
+            setActiveNoteId(data.notes[0].id);
+            setEditTitle(data.notes[0].title);
+            setEditContent(data.notes[0].content);
+            setEditSubject(data.notes[0].subject);
+          }
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }
+    loadNotes();
+  }, [user, documents]);
+
+  const activeNote = notes.find((n) => n.id === activeNoteId);
+
+  const handleSelectNote = (note: Note) => {
+    setActiveNoteId(note.id);
+    setEditTitle(note.title);
+    setEditContent(note.content);
+    setEditSubject(note.subject);
+    setEditing(false);
+  };
+
+  const handleCreateNote = async () => {
+    try {
+      const response = await fetch("/api/notes", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": user?.id || "user-123"
+        },
+        body: JSON.stringify({
+          title: "Untitled Study Note",
+          subject: "General",
+          content: "# New Study Note\nStart typing your study notes here..."
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const newNote = data.note as Note;
+        setNotes([newNote, ...notes]);
+        setActiveNoteId(newNote.id);
+        setEditTitle(newNote.title);
+        setEditContent(newNote.content);
+        setEditSubject(newNote.subject);
+        setEditing(true);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleSaveNote = async () => {
+    if (!activeNoteId) return;
+    try {
+      const response = await fetch(`/api/notes/${activeNoteId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": user?.id || "user-123"
+        },
+        body: JSON.stringify({
+          title: editTitle,
+          content: editContent
+        })
+      });
+      if (response.ok) {
+        const updatedNotes = notes.map((n) => 
+          n.id === activeNoteId ? { ...n, title: editTitle, content: editContent, updatedAt: new Date().toISOString() } : n
+        );
+        setNotes(updatedNotes);
+        setEditing(false);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteNote = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this study note?")) return;
+    try {
+      const response = await fetch(`/api/notes/${id}`, {
+        method: "DELETE",
+        headers: { "x-user-id": user?.id || "user-123" }
+      });
+      if (response.ok) {
+        const remaining = notes.filter((n) => n.id !== id);
+        setNotes(remaining);
+        if (remaining.length > 0) {
+          handleSelectNote(remaining[0]);
+        } else {
+          setActiveNoteId(null);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleExportNote = (format: "txt" | "md") => {
+    if (!activeNote) return;
+    const blob = new Blob([editContent], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${editTitle.replace(/\s+/g, "_")}.${format}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const filteredNotes = notes.filter((n) => 
+    n.title.toLowerCase().includes(search.toLowerCase()) || 
+    n.subject.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="space-y-6 h-[calc(100vh-8.5rem)] flex flex-col">
+      <div className="flex justify-between items-center shrink-0">
+        <div>
+          <h2 className="text-xl font-bold font-display tracking-tight">AI Integrated Study Notes</h2>
+          <p className={`text-xs mt-1 ${isDark ? "text-gray-400" : "text-gray-500"}`}>
+            Compile and format notes automatically generated by parsing uploaded documents.
+          </p>
+        </div>
+        <button
+          onClick={handleCreateNote}
+          className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-lg shadow-indigo-600/25 cursor-pointer"
+        >
+          <Plus className="w-4 h-4" />
+          <span>New Note</span>
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 flex-1 overflow-hidden min-h-0">
+        
+        {/* Pane 1: Notes List */}
+        <div className={`p-4 rounded-2xl border flex flex-col h-full ${
+          isDark ? "bg-[#111625] border-gray-800" : "bg-white border-gray-200 shadow-sm"
+        }`}>
+          {/* Search bar */}
+          <div className="relative mb-4 shrink-0">
+            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search notes, folders..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className={`w-full text-xs py-2 pl-9 pr-3 rounded-lg border outline-hidden ${
+                isDark ? "bg-[#161e31] border-gray-800 text-white focus:border-indigo-500" : "bg-gray-50 border-gray-200 focus:bg-white text-gray-800"
+              }`}
+            />
+          </div>
+
+          {/* List Scroll */}
+          <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+            {filteredNotes.length === 0 ? (
+              <p className="text-xs text-gray-500 text-center py-6">No study notes found.</p>
+            ) : (
+              filteredNotes.map((note) => (
+                <div
+                  key={note.id}
+                  onClick={() => handleSelectNote(note)}
+                  className={`p-3 rounded-xl border cursor-pointer transition-all flex justify-between items-start group ${
+                    activeNoteId === note.id
+                      ? "bg-indigo-600/15 border-indigo-500 text-white"
+                      : isDark
+                        ? "bg-[#161e31]/40 border-gray-800/80 hover:bg-[#161e31]/80 hover:border-gray-700"
+                        : "bg-gray-50 border-gray-200 hover:bg-gray-100 text-gray-800"
+                  }`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                      <span className="text-xs font-semibold truncate block">{note.title}</span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1.5 text-[9px] font-bold text-gray-500 uppercase font-mono">
+                      <span>{note.subject}</span>
+                      <span>•</span>
+                      {note.isAiGenerated && (
+                        <span className="text-indigo-400 flex items-center gap-0.5">
+                          <Sparkles className="w-2.5 h-2.5" /> AI
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteNote(note.id);
+                    }}
+                    className="opacity-0 group-hover:opacity-100 p-1 rounded-sm text-rose-500 hover:bg-rose-500/10 transition-opacity cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Pane 2: Notes Editor/Viewer */}
+        <div className={`p-5 rounded-2xl border md:col-span-2 flex flex-col justify-between h-full min-h-0 ${
+          isDark ? "bg-[#111625] border-gray-800 text-white" : "bg-white border-gray-200 text-gray-800 shadow-sm"
+        }`}>
+          {activeNote ? (
+            <>
+              {/* Note Header Title */}
+              <div className="flex items-center justify-between pb-3 border-b border-gray-800/50 mb-4 shrink-0">
+                <div className="flex-1 min-w-0 pr-4">
+                  {editing ? (
+                    <input
+                      type="text"
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      className={`text-sm font-bold w-full p-1.5 rounded-lg border outline-hidden ${
+                        isDark ? "bg-[#161e31] border-gray-800 text-white focus:border-indigo-500" : "bg-gray-50 border-gray-200 text-gray-900"
+                      }`}
+                    />
+                  ) : (
+                    <h3 className="text-sm font-bold truncate flex items-center gap-2">
+                      <span>{activeNote.title}</span>
+                      {activeNote.isAiGenerated && (
+                        <span className="text-[9px] font-bold text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded-sm uppercase tracking-wide">
+                          AI Generated
+                        </span>
+                      )}
+                    </h3>
+                  )}
+                  <p className="text-[10px] text-gray-500 mt-1 font-mono uppercase tracking-wider">
+                    Subject: {activeNote.subject} • Updated: {new Date(activeNote.updatedAt).toLocaleDateString()}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {editing ? (
+                    <button
+                      onClick={handleSaveNote}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold rounded-lg cursor-pointer"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      <span>Save</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setEditing(true)}
+                      className="p-1.5 rounded-lg border border-gray-800 hover:border-gray-700 text-gray-400 hover:text-white cursor-pointer"
+                      title="Edit Note"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => handleExportNote("txt")}
+                    className="p-1.5 rounded-lg border border-gray-800 hover:border-gray-700 text-indigo-400 cursor-pointer"
+                    title="Export .txt notes"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => handleExportNote("md")}
+                    className="p-1.5 rounded-lg border border-gray-800 hover:border-gray-700 text-emerald-400 cursor-pointer"
+                    title="Export Markdown notes"
+                  >
+                    <FileDown className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Note Content Panel */}
+              <div className="flex-1 overflow-y-auto pr-2 mb-4">
+                {editing ? (
+                  <textarea
+                    value={editContent}
+                    onChange={(e) => setEditContent(e.target.value)}
+                    rows={12}
+                    className={`w-full text-xs p-3 rounded-xl border outline-hidden resize-none font-mono h-full min-h-[300px] ${
+                      isDark ? "bg-[#161e31] border-gray-800 text-white focus:border-indigo-500" : "bg-gray-50 border-gray-200 text-gray-800"
+                    }`}
+                  ></textarea>
+                ) : (
+                  <div className={`text-xs leading-relaxed whitespace-pre-wrap font-sans ${isDark ? "text-gray-300" : "text-gray-700"}`}>
+                    {activeNote.content}
+                  </div>
+                )}
+              </div>
+
+              {/* Invariant Footer */}
+              <div className={`pt-3 border-t text-[9px] text-gray-500 font-mono flex items-center justify-between shrink-0 ${
+                isDark ? "border-gray-800" : "border-gray-100"
+              }`}>
+                <span>INTELLIGENT INTEGRATION NODE EXPORT READY</span>
+                <span className="flex items-center gap-1 text-emerald-500">
+                  <CheckCircle className="w-3.5 h-3.5" /> Local disk persisted
+                </span>
+              </div>
+            </>
+          ) : (
+            <div className="text-center py-20 text-gray-500 flex-1 flex flex-col items-center justify-center">
+              <FileText className="w-12 h-12 text-gray-600 mb-2" />
+              <p className="text-xs">Select or compile a study note from the left panel.</p>
+            </div>
+          )}
+        </div>
+
+      </div>
+    </div>
+  );
+}

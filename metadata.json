@@ -1,0 +1,8 @@
+{
+  "name": "AI Study Assistant",
+  "description": "An intelligent learning companion featuring AI-powered document summarization, note generation, flashcards, interactive quizzes, study planner, progress analytics, and custom RAG chat.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
